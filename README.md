@@ -37,7 +37,7 @@ of filtering are as follows:
 |       | Pool |   2   |   2,1       |  256   |  3 | 13  |       
 | 7     | Conv |   3   |   1         |  512   |  3 | 13  |    same
 | 8     | Conv |   3   |   1         |  512   |  3 | 13  |    same
-|       | Pool |3，1   |   3,1       |  512   |  1 | 13  |     
+|       | Pool |3,1   |   3,1       |  512   |  1 | 13  |     
 | 9     | LSTM |       |             |  512   |    |     |              
 | 10    | LSTM |       |             |  512   |    |     |              
 
