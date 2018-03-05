@@ -1,3 +1,4 @@
+# coding=utf-8
 # CNN-LSTM-CTC-OCR
 # Copyright (C) 2017 Jerod Weinman
 #
@@ -17,6 +18,8 @@
 import os
 import tensorflow as tf
 import math
+import pdb
+import cv2
 
 """Each record within the TFRecord file is a serialized Example proto. 
 The Example proto contains the following fields:
@@ -36,10 +39,11 @@ out_charset="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 jpeg_data = tf.placeholder(dtype=tf.string)
 jpeg_decoder = tf.image.decode_jpeg(jpeg_data,channels=1)
 
-kernel_sizes = [5,5,3,3,3,3] # CNN kernels for image reduction
+kernel_sizes = [3,3,3,3,3,3] # CNN kernels for image reduction
 
 # Minimum allowable width of image after CNN processing
-min_width = 20
+#min_width = 20
+min_width = 8
 
 def calc_seq_len(image_width):
     """Calculate sequence length of given image after CNN processing"""
@@ -53,12 +57,13 @@ def calc_seq_len(image_width):
     after_pool4 = after_pool2 - 1 # max without stride
     after_fc6 =  after_pool4 - fc6_trim
     seq_len = 2*after_fc6
-    return seq_len
+    #return seq_len
+    return (image_width-2) // 2 -2
 
 seq_lens = [calc_seq_len(w) for w in range(1024)]
 
 def gen_data(input_base_dir, image_list_filename, output_filebase, 
-             num_shards=1000,start_shard=0):
+             num_shards=1000,start_shard=0): # 1000->100
     """ Generate several shards worth of TFRecord data """
     session_config = tf.ConfigProto()
     session_config.gpu_options.allow_growth=True
@@ -68,7 +73,9 @@ def gen_data(input_base_dir, image_list_filename, output_filebase,
     num_digits = math.ceil( math.log10( num_shards - 1 ))
     shard_format = '%0'+ ('%d'%num_digits) + 'd' # Use appropriate # leading zeros
     images_per_shard = int(math.ceil( len(image_filenames) / float(num_shards) ))
-    
+   
+    #TODO 每个train test val的文件都按顺序有编号
+
     for i in range(start_shard,num_shards):
         start = i*images_per_shard
         end   = (i+1)*images_per_shard
@@ -92,7 +99,7 @@ def gen_shard(sess, input_base_dir, image_filenames, output_filename):
     for filename in image_filenames:
         path_filename = os.path.join(input_base_dir,filename)
         if os.stat(path_filename).st_size == 0:
-            print('SKIPPING',filename)
+            print('SKIPPING, st_size==0',filename)
             continue
         try:
             image_data,height,width = get_image(sess,path_filename)
@@ -102,7 +109,8 @@ def gen_shard(sess, input_base_dir, image_filenames, output_filename):
                                        height, width)
                 writer.write(example.SerializeToString())
             else:
-                print('SKIPPING',filename)
+                print width,text,labels
+                print('SKIPPING,not writable',filename)
         except:
             # Some files have bogus payloads, catch and note the error, moving on
             print('ERROR',filename)
@@ -112,11 +120,12 @@ def gen_shard(sess, input_base_dir, image_filenames, output_filename):
 def get_image_filenames(image_list_filename):
     """ Given input file, generate a list of relative filenames"""
     filenames = []
+    #pdb.set_trace()
     with open(image_list_filename) as f:
         for line in f:
             # Carve out the ground truth string and file path from lines like:
             # ./2697/6/466_MONIKER_49537.jpg 49537
-            filename = line.split(' ',1)[0][2:] # split off "./" and number
+            filename = line.split(' ',1)[0]#[2:] # split off "./" and number
             filenames.append(filename)
     return filenames
 
@@ -125,12 +134,23 @@ def get_image(sess,filename):
     with tf.gfile.FastGFile(filename, 'r') as f:
         image_data = f.read()
     image = sess.run(jpeg_decoder,feed_dict={jpeg_data: image_data})
+    #pdb.set_trace()
+    #if image.shape[0] != 31:
+    #    image = cv2.resize(image,(image.shape[1] * 31 / image.shape[0],31))
+    #    print 'the image height is not 31, and we change it to ' ,image.shape[0]
     height = image.shape[0]
     width = image.shape[1]
+    print "the height and width is ", height, width
     return image_data, height, width
 
 def is_writable(image_width,text):
     """Determine whether the CNN-processed image is longer than the string"""
+    if image_width <= min_width:
+        print 'image_width <= min_width '
+    if len(text)> seq_lens[image_width]:
+        print 'len(text) > seq_lens[image_width]'
+        print len(text)
+        print seq_lens[image_width]
     return (image_width > min_width) and (len(text) <= seq_lens[image_width])
     
 def get_text_and_labels(filename):
@@ -174,9 +194,9 @@ def _bytes_feature(values):
 
 def main(argv=None):
     
-    gen_data('../data/images', 'annotation_train.txt', '../data/train/words')
-    gen_data('../data/images', 'annotation_val.txt',   '../data/val/words')
-    gen_data('../data/images', 'annotation_test.txt',  '../data/test/words')
+    gen_data('../data/images', 'train.txt', '../data/train/words')
+    gen_data('../data/images', 'val.txt',   '../data/val/words')
+    gen_data('../data/images', 'test.txt',  '../data/test/words')
 
 if __name__ == '__main__':
     main()
